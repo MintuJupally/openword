@@ -99,3 +99,28 @@
   content: '';
   color: transparent;
 }
+
+/* Inline formatting styles */
+.pageContent span[data-format] {
+  display: inline;
+}
+
+.pageContent span[data-format*='bold'] {
+  font-weight: bold;
+}
+
+.pageContent span[data-format*='italic'] {
+  font-style: italic;
+}
+
+.pageContent span[data-format*='underline'] {
+  text-decoration: underline;
+}
+
+.pageContent span[data-format*='strikethrough'] {
+  text-decoration: line-through;
+}
+
+.pageContent span[data-format*='underline'][data-format*='strikethrough'] {
+  text-decoration: underline line-through;
+}
