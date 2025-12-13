@@ -27,7 +27,7 @@ function DocumentPage() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState('');
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const saveTimeoutRef = useRef<number | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (docId) {
@@ -40,13 +40,38 @@ function DocumentPage() {
       setDocumentTitle(document.title);
       setDocumentUpdatedAt(document.updatedAt);
 
+      // Update titleValue if not currently editing
+      if (!isEditingTitle) {
+        setTitleValue(document.title);
+      }
+
+      // Save document with debounce
       if (documentRef.current) {
-        saveDocument(document);
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+
+        setSaving(true);
+        saveTimeoutRef.current = setTimeout(async () => {
+          try {
+            await saveDocument(document);
+            setSaving(false);
+          } catch (err) {
+            console.error('Failed to save document:', err);
+            setSaving(false);
+          }
+        }, 500);
       }
 
       documentRef.current = document;
     }
-  }, [document]);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [document, isEditingTitle]);
 
   const loadDocument = async (id: string) => {
     try {
@@ -74,6 +99,7 @@ function DocumentPage() {
   }, [isEditingTitle]);
 
   const handleTitleClick = () => {
+    setTitleValue(documentTitle);
     setIsEditingTitle(true);
   };
 
@@ -85,17 +111,16 @@ function DocumentPage() {
     if (!document || !docId) return;
 
     const trimmedTitle = titleValue.trim() || 'Untitled Document';
-    setTitleValue(trimmedTitle);
     setIsEditingTitle(false);
 
-    // Update document title
-    const updatedDoc = { ...document, title: trimmedTitle };
-
-    // Save to database
-    try {
+    // Only update if title actually changed
+    if (trimmedTitle !== document.title) {
+      // Update document title
+      const updatedDoc = { ...document, title: trimmedTitle, updatedAt: Date.now() };
       setDocument(updatedDoc);
-    } catch (err) {
-      console.error('Failed to save title:', err);
+    } else {
+      // Reset titleValue to current document title if no change
+      setTitleValue(document.title);
     }
   };
 
@@ -104,7 +129,7 @@ function DocumentPage() {
       e.preventDefault();
       handleTitleSave();
     } else if (e.key === 'Escape') {
-      setTitleValue(document?.title || '');
+      setTitleValue(documentTitle);
       setIsEditingTitle(false);
     }
   };
