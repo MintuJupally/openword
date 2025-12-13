@@ -1,0 +1,91 @@
+.container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+
+  background-color: #eeeeee;
+  overflow: hidden;
+}
+
+.header {
+  padding: 1rem;
+  border-bottom: 1px solid #e8e8e8;
+  background-color: #fafafa;
+  display: flex;
+  align-items: center;
+}
+
+.headerContent {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 1rem;
+  flex: 1;
+  justify-content: space-between;
+}
+
+.headerTitle {
+  display: flex;
+  max-width: 40vw;
+}
+
+.headerTitleText {
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.headerTitleInput {
+  max-width: 40vw;
+}
+
+.headerTitleText {
+  font-size: 1.25rem;
+  font-weight: 600;
+  user-select: none;
+  cursor: default;
+  border: 1px solid;
+  border-color: transparent;
+  border-radius: 4px;
+  padding: 0 0.5rem;
+}
+
+.headerTitleText:hover {
+  border-color: #e8e8e8;
+}
+
+.headerTitleInput {
+  font-size: 1.25rem;
+  font-weight: 600;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 0 0.5rem;
+  margin: 0;
+  width: 100%;
+  min-width: 200px;
+  font-family: inherit;
+  color: inherit;
+  cursor: text;
+  border: 1px solid;
+  border-color: #e8e8e8;
+}
+
+.headerTitleInput:focus {
+  outline: none;
+  border: 1px solid;
+  border-color: #1890ff;
+  border-radius: 4px;
+}
+
+.lastUpdated {
+  font-size: 0.875rem;
+}
+
+.editorContainer {
+  flex: 1;
+  overflow: auto;
+  width: 100%;
+  background-color: #eeeeee;
+}
