@@ -847,6 +847,11 @@ export function Editor({ document, onDocumentChange, onToolbarPropsReady }: Edit
     // Find all div elements that might be Enter-created blocks
     const allDivs = editorRef.current.querySelectorAll('div');
     allDivs.forEach((div) => {
+      // Skip page break blocks - they should never be replaced
+      if (div.hasAttribute('data-page-break')) {
+        return;
+      }
+
       // Check if this is a div with only a br (typical Enter-created block)
       const children = Array.from(div.childNodes);
       const hasOnlyBr =
