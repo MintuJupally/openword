@@ -12,9 +12,9 @@ const { Title, Text } = Typography;
 
 function Home() {
   const navigate = useNavigate();
-  const [recentDocuments, setRecentDocuments] = useState<
-    Array<{ id: string; title: string; lastModified: number }>
-  >([]);
+  const [recentDocuments, setRecentDocuments] = useState<Array<{ id: string; title: string; lastModified: number }>>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,7 +30,7 @@ function Home() {
           title: doc.title,
           // Store UTC timestamp (will be converted to local time when displaying)
           lastModified: doc.updatedAt,
-        }))
+        })),
       );
     } catch (error) {
       console.error('Failed to load recent documents:', error);
@@ -47,7 +47,6 @@ function Home() {
       navigate(`/document/${docId}`);
     } catch (error) {
       console.error('Failed to create document:', error);
-      // TODO: Show error message to user
     }
   };
 
@@ -78,10 +77,7 @@ function Home() {
             <List
               dataSource={recentDocuments}
               renderItem={(doc) => (
-                <List.Item
-                  className={styles.documentItem}
-                  onClick={() => navigate(`/document/${doc.id}`)}
-                >
+                <List.Item className={styles.documentItem} onClick={() => navigate(`/document/${doc.id}`)}>
                   <List.Item.Meta
                     title={doc.title}
                     description={formatUTCTimestampForDisplay(doc.lastModified, {
@@ -99,4 +95,3 @@ function Home() {
 }
 
 export default Home;
-

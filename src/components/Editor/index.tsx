@@ -642,7 +642,6 @@ export function Editor({ document, onDocumentChange, onToolbarPropsReady }: Edit
         }
 
         // Remove from array
-        console.log('removing page', i);
         pageRefsRef.current.splice(i, 1);
       }
     }
@@ -1097,8 +1096,6 @@ export function Editor({ document, onDocumentChange, onToolbarPropsReady }: Edit
       }
     }
 
-    console.log(`  [BREAK] Found ${textNodes.length} text nodes to break`);
-
     // Process each text node: break into characters and wrap each with its formats
     for (const { node, startOffset, endOffset } of textNodes) {
       const parent = node.parentNode;
@@ -1187,7 +1184,6 @@ export function Editor({ document, onDocumentChange, onToolbarPropsReady }: Edit
         if (currentElement.tagName === 'SPAN' && currentElement.hasAttribute('data-format')) {
           const currentFormatRaw = currentElement.getAttribute('data-format') || '';
           const currentFormat = normalizeFormat(currentFormatRaw);
-          const currentText = currentElement.textContent || '';
 
           // Look ahead for adjacent spans with the EXACT same formatting
           // Do NOT wrap unformatted text nodes - only merge spans that already have the same format
@@ -1200,14 +1196,10 @@ export function Editor({ document, onDocumentChange, onToolbarPropsReady }: Edit
               if (nextElement.tagName === 'SPAN' && nextElement.hasAttribute('data-format')) {
                 const nextFormatRaw = nextElement.getAttribute('data-format') || '';
                 const nextFormat = normalizeFormat(nextFormatRaw);
-                const nextText = nextElement.textContent || '';
 
                 // Only merge if formats are EXACTLY the same (after normalization)
                 if (nextFormat === currentFormat && nextFormat.length > 0) {
                   // Same format - merge
-                  console.log(
-                    `  [MERGE] Merging spans with format "${currentFormat}": "${currentText}" + "${nextText}"`,
-                  );
                   while (nextElement.firstChild) {
                     currentElement.appendChild(nextElement.firstChild);
                   }
@@ -1216,7 +1208,6 @@ export function Editor({ document, onDocumentChange, onToolbarPropsReady }: Edit
                   continue;
                 } else {
                   // Different format - stop merging
-                  console.log(`  [MERGE] Stopping merge: different formats "${currentFormat}" vs "${nextFormat}"`);
                   break;
                 }
               } else {
