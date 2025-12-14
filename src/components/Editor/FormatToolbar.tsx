@@ -1,13 +1,20 @@
 import { Button } from 'antd';
-import { BoldOutlined, ItalicOutlined, UnderlineOutlined, StrikethroughOutlined } from '@ant-design/icons';
+import {
+  BoldOutlined,
+  ItalicOutlined,
+  UnderlineOutlined,
+  StrikethroughOutlined,
+  FileTextOutlined,
+} from '@ant-design/icons';
 import styles from './FormatToolbar.module.css';
 
 interface FormatToolbarProps {
   onFormat: (format: 'bold' | 'italic' | 'underline' | 'strikethrough') => void;
   activeFormats: Set<'bold' | 'italic' | 'underline' | 'strikethrough'>;
+  onPageBreak?: () => void;
 }
 
-export function FormatToolbar({ onFormat, activeFormats }: FormatToolbarProps) {
+export function FormatToolbar({ onFormat, activeFormats, onPageBreak }: FormatToolbarProps) {
   return (
     <div className={styles.toolbar}>
       <Button
@@ -34,6 +41,9 @@ export function FormatToolbar({ onFormat, activeFormats }: FormatToolbarProps) {
         onClick={() => onFormat('strikethrough')}
         title="Strikethrough"
       />
+      <Button type="default" icon={<FileTextOutlined />} onClick={() => onPageBreak?.()} title="Page Break">
+        Page Break
+      </Button>
     </div>
   );
 }

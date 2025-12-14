@@ -115,7 +115,7 @@ function DocumentPage() {
 
     // Only update if title actually changed
     if (trimmedTitle !== document.title) {
-      // Update document title
+    // Update document title
       const updatedDoc = { ...document, title: trimmedTitle, updatedAt: Date.now() };
       setDocument(updatedDoc);
     } else {

@@ -10,6 +10,7 @@ export interface Block {
     alignment?: 'left' | 'center' | 'right' | 'justify';
     level?: number; // for headings (1-6) or list indentation
     styles?: string[]; // for inline styles like bold, italic
+    isPageBreak?: boolean; // marks a page break block
   };
 }
 

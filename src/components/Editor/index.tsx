@@ -25,7 +25,11 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
   const currentSelectionRef = useRef<Range | null>(null);
 
   // Helper function to get the appropriate tag for a block
-  const getBlockTag = (block: Block): 'p' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'li' => {
+  const getBlockTag = (block: Block): 'p' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'li' | 'div' => {
+    // Check if this is a page break block
+    if (block.metadata?.isPageBreak) {
+      return 'div';
+    }
     switch (block.type) {
       case 'heading':
         const level = block.metadata?.level || 1;
@@ -40,6 +44,22 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
 
   // Helper function to create a block element
   const createBlockElement = (block: Block): HTMLElement => {
+    // Handle page break blocks
+    if (block.metadata?.isPageBreak) {
+      const element = window.document.createElement('div');
+      element.className = 'block page-break';
+      element.setAttribute('data-page-break', 'true');
+      element.setAttribute('data-block-id', block.id);
+      element.setAttribute('contenteditable', 'false');
+      element.style.visibility = 'hidden';
+      element.style.height = '0';
+      element.style.margin = '0';
+      element.style.padding = '0';
+      element.style.border = 'none';
+      element.style.overflow = 'hidden';
+      return element;
+    }
+
     const tag = getBlockTag(block);
     const element = window.document.createElement(tag);
     element.className = `block ${block.type}`;
@@ -115,6 +135,10 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
 
   // Helper function to extract block type from DOM element
   const getBlockTypeFromElement = (element: HTMLElement): Block['type'] => {
+    // Check if this is a page break block
+    if (element.hasAttribute('data-page-break')) {
+      return 'paragraph'; // Use paragraph as base type, but mark as page break in metadata
+    }
     const className = element.className || '';
     if (className.includes('heading')) return 'heading';
     if (className.includes('list')) return 'list';
@@ -139,6 +163,12 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
   // Helper function to extract block metadata from DOM element
   const getBlockMetadataFromElement = (element: HTMLElement): Block['metadata'] => {
     const metadata: Block['metadata'] = {};
+
+    // Check if this is a page break block
+    if (element.hasAttribute('data-page-break')) {
+      metadata.isPageBreak = true;
+      return metadata; // Page breaks don't have other metadata
+    }
 
     // Extract alignment from style
     const textAlign = element.style.textAlign;
@@ -166,7 +196,18 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
   // Calculate total height of all blocks in a page
   const calculatePageBlocksHeight = (pageRef: PageRef): number => {
     const blockElements = Array.from(pageRef.contentElement.children) as HTMLElement[];
-    return blockElements.reduce((total, blockElement) => {
+    return blockElements.reduce((total, blockElement, index) => {
+      // Check if this is a page break block
+      if (blockElement.hasAttribute('data-page-break')) {
+        // Page break blocks have height 0, but add big height to push next block to new page
+        // If there's a next block in the same page, add a large height to force it to next page
+        if (index < blockElements.length - 1) {
+          // Add a very large height to push the next block to a new page
+          return total + getPageContentMaxHeight() + 1000; // Large enough to force overflow
+        }
+        return total; // Page break at end of page doesn't add height
+      }
+
       const rect = blockElement.getBoundingClientRect();
       const computedStyle = window.getComputedStyle(blockElement);
       const marginTop = parseFloat(computedStyle.marginTop) || 0;
@@ -206,7 +247,16 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
     pageContentElement.className = styles.pageContent;
 
     pageElement.appendChild(pageContentElement);
-    editor.appendChild(pageElement);
+
+    // Insert the new page right after the current page in the DOM
+    const currentPageRef = pageRefsRef.current[currentPageIndex];
+    if (currentPageRef && currentPageRef.element.nextSibling) {
+      // Insert before the next sibling (if any)
+      editor.insertBefore(pageElement, currentPageRef.element.nextSibling);
+    } else {
+      // No next sibling, append to end
+      editor.appendChild(pageElement);
+    }
 
     const newPageRef: PageRef = {
       element: pageElement,
@@ -216,11 +266,6 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
 
     // Insert at the correct position in the array
     pageRefsRef.current.splice(nextPageIndex, 0, newPageRef);
-
-    // Update page numbers for all subsequent pages
-    for (let i = nextPageIndex; i < pageRefsRef.current.length; i++) {
-      // The page number is just the index + 1, so no need to update DOM
-    }
 
     return newPageRef;
   };
@@ -275,74 +320,6 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
   };
 
   // Move the last block from one page to the top of the next page
-  const moveLastBlockToNextPage = (fromPageIndex: number, toPageIndex: number): void => {
-    const fromPageRef = pageRefsRef.current[fromPageIndex];
-    const toPageRef = pageRefsRef.current[toPageIndex];
-
-    if (!fromPageRef || !toPageRef) return;
-
-    const blockElements = Array.from(fromPageRef.contentElement.children) as HTMLElement[];
-    if (blockElements.length === 0) return;
-
-    const lastBlock = blockElements[blockElements.length - 1];
-    const blockId = lastBlock.getAttribute('data-block-id');
-
-    if (!blockId) return;
-
-    // Check if cursor is in this block before moving
-    const cursorWasInBlock = isCursorInBlock(lastBlock);
-
-    // Remove from source page
-    fromPageRef.contentElement.removeChild(lastBlock);
-    fromPageRef.blockRefs.delete(blockId);
-
-    // Add to destination page at the top
-    toPageRef.contentElement.insertBefore(lastBlock, toPageRef.contentElement.firstChild);
-    toPageRef.blockRefs.set(blockId, lastBlock);
-
-    // If cursor was in this block, move it to the start of the block in its new location
-    if (cursorWasInBlock) {
-      // Use setTimeout to ensure DOM is updated
-      setTimeout(() => {
-        setCursorToStart(lastBlock);
-      }, 0);
-    }
-  };
-
-  // Move the first block from one page to the end of the previous page
-  const moveFirstBlockToPreviousPage = (fromPageIndex: number, toPageIndex: number): void => {
-    const fromPageRef = pageRefsRef.current[fromPageIndex];
-    const toPageRef = pageRefsRef.current[toPageIndex];
-
-    if (!fromPageRef || !toPageRef) return;
-
-    const blockElements = Array.from(fromPageRef.contentElement.children) as HTMLElement[];
-    if (blockElements.length === 0) return;
-
-    const firstBlock = blockElements[0];
-    const blockId = firstBlock.getAttribute('data-block-id');
-
-    if (!blockId) return;
-
-    // Check if cursor is in this block before moving
-    const cursorWasInBlock = isCursorInBlock(firstBlock);
-
-    // Remove from source page
-    fromPageRef.contentElement.removeChild(firstBlock);
-    fromPageRef.blockRefs.delete(blockId);
-
-    // Add to destination page at the end
-    toPageRef.contentElement.appendChild(firstBlock);
-    toPageRef.blockRefs.set(blockId, firstBlock);
-
-    // If cursor was in this block, move it to the start of the block in its new location
-    if (cursorWasInBlock) {
-      // Use setTimeout to ensure DOM is updated
-      setTimeout(() => {
-        setCursorToStart(firstBlock);
-      }, 0);
-    }
-  };
 
   // Find the page index that contains the active/focused element
   const findCurrentPageIndex = (): number | null => {
@@ -375,18 +352,51 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
     return null;
   };
 
-  // Calculate height if a block were added to a page
-  const calculatePageHeightWithBlock = (pageRef: PageRef, blockElement: HTMLElement): number => {
-    const currentHeight = calculatePageBlocksHeight(pageRef);
-    const rect = blockElement.getBoundingClientRect();
-    const computedStyle = window.getComputedStyle(blockElement);
-    const marginTop = parseFloat(computedStyle.marginTop) || 0;
-    const marginBottom = parseFloat(computedStyle.marginBottom) || 0;
+  // Move all blocks from a starting index to the next page
+  const moveBlocksToNextPage = (fromPageIndex: number, toPageIndex: number, startBlockIndex: number): void => {
+    const fromPageRef = pageRefsRef.current[fromPageIndex];
+    const toPageRef = pageRefsRef.current[toPageIndex];
 
-    // getBoundingClientRect includes padding and border, but not margin
-    // So we add marginTop and marginBottom
-    const blockHeight = rect.height + marginTop + marginBottom;
-    return currentHeight + blockHeight;
+    if (!fromPageRef || !toPageRef) return;
+
+    const blockElements = Array.from(fromPageRef.contentElement.children) as HTMLElement[];
+    if (startBlockIndex >= blockElements.length) return;
+
+    // Find if cursor is in any of the blocks being moved
+    let cursorBlock: HTMLElement | null = null;
+    for (let i = startBlockIndex; i < blockElements.length; i++) {
+      if (isCursorInBlock(blockElements[i])) {
+        cursorBlock = blockElements[i];
+        break;
+      }
+    }
+
+    // Move all blocks from startBlockIndex to the end
+    const blocksToMove = blockElements.slice(startBlockIndex);
+
+    // To maintain order when inserting at the top, we need to iterate in reverse
+    // This way, the first block in the array ends up at the top, preserving original order
+    for (let i = blocksToMove.length - 1; i >= 0; i--) {
+      const block = blocksToMove[i];
+      const blockId = block.getAttribute('data-block-id');
+      if (!blockId) continue;
+
+      // Remove from source page
+      fromPageRef.contentElement.removeChild(block);
+      fromPageRef.blockRefs.delete(blockId);
+
+      // Add to destination page at the top
+      // Insert before firstChild (which may change as we insert, but that's okay when iterating backwards)
+      toPageRef.contentElement.insertBefore(block, toPageRef.contentElement.firstChild);
+      toPageRef.blockRefs.set(blockId, block);
+    }
+
+    // If cursor was in one of the moved blocks, restore it
+    if (cursorBlock) {
+      setTimeout(() => {
+        setCursorToStart(cursorBlock!);
+      }, 0);
+    }
   };
 
   // Handle page overflow - move overflowing blocks to next pages (forward flow)
@@ -407,19 +417,103 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
         const pageRef = pageRefsRef.current[pageIndex];
         const totalHeight = calculatePageBlocksHeight(pageRef);
 
-        // If page exceeds max height, move last block to next page
+        // If page exceeds max height, find all blocks that need to be moved
         if (totalHeight > maxHeight) {
           const blockElements = Array.from(pageRef.contentElement.children) as HTMLElement[];
 
-          // Only move if there's more than one block (keep at least one block per page)
-          if (blockElements.length > 1) {
-            getOrCreateNextPage(pageIndex);
-            moveLastBlockToNextPage(pageIndex, pageIndex + 1);
-            hasChanges = true;
-            break; // Restart from beginning to re-check all pages
+          // Find all non-page-break blocks
+          const nonPageBreakBlocks = blockElements.filter((el) => !el.hasAttribute('data-page-break'));
+
+          // Only move if there's more than one non-page-break block (keep at least one block per page)
+          if (nonPageBreakBlocks.length > 1) {
+            // Find the split point: keep blocks that fit, move the rest
+            let accumulatedHeight = 0;
+            let splitIndex = -1;
+
+            // Calculate height of each block and find where to split
+            for (let i = 0; i < blockElements.length; i++) {
+              const block = blockElements[i];
+              if (block.hasAttribute('data-page-break')) {
+                // Page break adds large height - everything after it should move
+                if (i < blockElements.length - 1) {
+                  splitIndex = i + 1;
+                  break;
+                }
+                continue;
+              }
+
+              const rect = block.getBoundingClientRect();
+              const computedStyle = window.getComputedStyle(block);
+              const marginTop = parseFloat(computedStyle.marginTop) || 0;
+              const marginBottom = parseFloat(computedStyle.marginBottom) || 0;
+              const blockHeight = rect.height + marginTop + marginBottom;
+
+              accumulatedHeight += blockHeight;
+
+              // If adding this block exceeds max height, move this and all subsequent blocks
+              if (accumulatedHeight > maxHeight) {
+                splitIndex = i;
+                break;
+              }
+            }
+
+            // If we found a split point, move all blocks from that point onwards
+            if (splitIndex >= 0 && splitIndex < blockElements.length) {
+              getOrCreateNextPage(pageIndex);
+              moveBlocksToNextPage(pageIndex, pageIndex + 1, splitIndex);
+              hasChanges = true;
+              break; // Restart from beginning to re-check all pages
+            }
           }
         }
       }
+    }
+  };
+
+  // Move all blocks from a starting index to the previous page
+  const moveBlocksToPreviousPage = (
+    fromPageIndex: number,
+    toPageIndex: number,
+    startBlockIndex: number,
+    endBlockIndex: number,
+  ): void => {
+    const fromPageRef = pageRefsRef.current[fromPageIndex];
+    const toPageRef = pageRefsRef.current[toPageIndex];
+
+    if (!fromPageRef || !toPageRef) return;
+
+    const blockElements = Array.from(fromPageRef.contentElement.children) as HTMLElement[];
+    if (startBlockIndex >= blockElements.length || endBlockIndex > blockElements.length) return;
+
+    // Find if cursor is in any of the blocks being moved
+    let cursorBlock: HTMLElement | null = null;
+    for (let i = startBlockIndex; i < endBlockIndex; i++) {
+      if (isCursorInBlock(blockElements[i])) {
+        cursorBlock = blockElements[i];
+        break;
+      }
+    }
+
+    // Move all blocks from startBlockIndex to endBlockIndex
+    const blocksToMove = blockElements.slice(startBlockIndex, endBlockIndex);
+    for (const block of blocksToMove) {
+      const blockId = block.getAttribute('data-block-id');
+      if (!blockId) continue;
+
+      // Remove from source page
+      fromPageRef.contentElement.removeChild(block);
+      fromPageRef.blockRefs.delete(blockId);
+
+      // Add to destination page at the end
+      toPageRef.contentElement.appendChild(block);
+      toPageRef.blockRefs.set(blockId, block);
+    }
+
+    // If cursor was in one of the moved blocks, restore it
+    if (cursorBlock) {
+      setTimeout(() => {
+        setCursorToStart(cursorBlock!);
+      }, 0);
     }
   };
 
@@ -438,24 +532,85 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
 
       if (!currentPageRef || !nextPageRef) continue;
 
-      let hasChanges = true;
+      const nextPageBlocks = Array.from(nextPageRef.contentElement.children) as HTMLElement[];
 
-      // Keep pulling blocks from next page while they fit
-      while (hasChanges) {
-        hasChanges = false;
-        const nextPageBlocks = Array.from(nextPageRef.contentElement.children) as HTMLElement[];
+      // If next page has no blocks, move to next iteration
+      if (nextPageBlocks.length === 0) continue;
 
-        // If next page has no blocks, move to next iteration
-        if (nextPageBlocks.length === 0) break;
+      // Skip reverse compaction if current page has a page break
+      // Page breaks force everything after them to the next page
+      if (currentPageRef.contentElement.querySelector('[data-page-break]')) {
+        continue;
+      }
 
-        const firstBlockFromNext = nextPageBlocks[0];
-        const heightWithBlock = calculatePageHeightWithBlock(currentPageRef, firstBlockFromNext);
+      // Calculate how many blocks can fit on current page
+      // Use actual height calculation, not including page break artificial height
+      // Note: We already skipped pages with page breaks above, so no need to check for page breaks here
+      let currentPageHeight = 0;
+      const currentPageBlocks = Array.from(currentPageRef.contentElement.children) as HTMLElement[];
+      for (const block of currentPageBlocks) {
+        const rect = block.getBoundingClientRect();
+        const computedStyle = window.getComputedStyle(block);
+        const marginTop = parseFloat(computedStyle.marginTop) || 0;
+        const marginBottom = parseFloat(computedStyle.marginBottom) || 0;
+        currentPageHeight += rect.height + marginTop + marginBottom;
+      }
 
-        // If the block fits, move it to current page
-        if (heightWithBlock <= maxHeight) {
-          moveFirstBlockToPreviousPage(pageIndex + 1, pageIndex);
-          hasChanges = true;
+      let blocksToMove: number[] = [];
+      let encounteredPageBreak = false;
+
+      // Iterate through ALL blocks in next page (including page breaks)
+      for (let i = 0; i < nextPageBlocks.length; i++) {
+        const block = nextPageBlocks[i];
+        const isPageBreak = block.hasAttribute('data-page-break');
+
+        if (isPageBreak) {
+          // Page break block has height 0
+          // Since we're still in the loop, we know we haven't overflowed yet
+          // Page break has height 0, so it always fits
+          blocksToMove.push(i);
+          // Mark that we've encountered a page break
+          encounteredPageBreak = true;
+          // Continue to check blocks after page break (they'll have large height)
+          continue;
         }
+
+        // If we've encountered a page break, blocks after it get large height
+        // (because page break forces them to stay after it)
+        let blockHeight: number;
+        if (encounteredPageBreak) {
+          // Blocks after page break should be treated as having very large height
+          blockHeight = getPageContentMaxHeight() + 1000;
+        } else {
+          // Normal block height calculation
+          const rect = block.getBoundingClientRect();
+          const computedStyle = window.getComputedStyle(block);
+          const marginTop = parseFloat(computedStyle.marginTop) || 0;
+          const marginBottom = parseFloat(computedStyle.marginBottom) || 0;
+          blockHeight = rect.height + marginTop + marginBottom;
+        }
+
+        // Check if this block fits
+        if (currentPageHeight + blockHeight <= maxHeight) {
+          currentPageHeight += blockHeight;
+          blocksToMove.push(i);
+        } else {
+          // Stop if this block doesn't fit
+          break;
+        }
+      }
+
+      // If we found blocks that can fit, move them all at once
+      if (blocksToMove.length > 0) {
+        // Sort indices to move blocks in order
+        blocksToMove.sort((a, b) => a - b);
+        const startIndex = blocksToMove[0];
+        const endIndex = blocksToMove[blocksToMove.length - 1] + 1;
+
+        // Move all blocks that fit
+        moveBlocksToPreviousPage(pageIndex + 1, pageIndex, startIndex, endIndex);
+
+        // Continue to next page pair (don't break, as we want to process all pages)
       }
     }
   };
@@ -471,14 +626,18 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
       const pageRef = pageRefsRef.current[i];
       const blockElements = Array.from(pageRef.contentElement.children) as HTMLElement[];
 
-      // Remove empty pages, but keep at least one page (the last one)
-      if (blockElements.length === 0 && pageRefsRef.current.length > 1) {
+      // Count non-page-break blocks
+      const nonPageBreakBlocks = blockElements.filter((el) => !el.hasAttribute('data-page-break'));
+
+      // Remove empty pages (pages with only page breaks or no blocks), but keep at least one page (the last one)
+      if (nonPageBreakBlocks.length === 0 && pageRefsRef.current.length > 1) {
         // Remove from DOM
         if (pageRef.element.parentElement) {
           pageRef.element.parentElement.removeChild(pageRef.element);
         }
 
         // Remove from array
+        console.log('removing page', i);
         pageRefsRef.current.splice(i, 1);
       }
     }
@@ -520,13 +679,13 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
           const blockId = blockElement.getAttribute('data-block-id');
           if (!blockId) return;
 
+          // Skip page break blocks in normal processing - they're handled separately
+          // But we still need to include them in the document
           const type = getBlockTypeFromElement(blockElement);
-
-          // Extract content with formatting - preserve HTML structure with formatting spans
-          // Get all child nodes and serialize them to HTML
-          const content = extractFormattedContent(blockElement);
-
           const metadata = getBlockMetadataFromElement(blockElement);
+
+          // For page break blocks, content is empty
+          const content = blockElement.hasAttribute('data-page-break') ? '' : extractFormattedContent(blockElement);
 
           blocks.push({
             id: blockId,
@@ -567,7 +726,97 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
     };
   };
 
+  // Rebuild pageRefs from actual DOM state (handles pages/blocks added/removed by browser)
+  const syncPageRefsWithDOM = (): void => {
+    if (!isInitializedRef.current || !editorRef.current) return;
+
+    const editor = editorRef.current;
+    // Get all page elements directly from DOM (not from pageRefs)
+    const pageElements = Array.from(editor.children) as HTMLDivElement[];
+
+    // Rebuild pageRefs array to match DOM
+    const newPageRefs: PageRef[] = [];
+
+    pageElements.forEach((pageElement) => {
+      // Check if this page element has the correct class
+      if (!pageElement.classList.contains(styles.page)) return;
+
+      // Find the pageContent element
+      const pageContentElement = pageElement.querySelector(`.${styles.pageContent}`) as HTMLDivElement;
+      if (!pageContentElement) return;
+
+      // Check if we already have a PageRef for this DOM element
+      const existingPageRef = pageRefsRef.current.find(
+        (ref) => ref.element === pageElement && ref.contentElement === pageContentElement,
+      );
+
+      if (existingPageRef) {
+        // Reuse existing PageRef but rebuild blockRefs Map
+        const blockRefs = new Map<string, HTMLElement>();
+        const blockElements = Array.from(pageContentElement.children) as HTMLElement[];
+        blockElements.forEach((blockElement) => {
+          const blockId = blockElement.getAttribute('data-block-id');
+          if (blockId) {
+            blockRefs.set(blockId, blockElement);
+          }
+        });
+        existingPageRef.blockRefs = blockRefs;
+        newPageRefs.push(existingPageRef);
+      } else {
+        // Create new PageRef for this DOM page
+        const blockRefs = new Map<string, HTMLElement>();
+        const blockElements = Array.from(pageContentElement.children) as HTMLElement[];
+        blockElements.forEach((blockElement) => {
+          const blockId = blockElement.getAttribute('data-block-id');
+          if (blockId) {
+            blockRefs.set(blockId, blockElement);
+          }
+        });
+
+        newPageRefs.push({
+          element: pageElement,
+          contentElement: pageContentElement,
+          blockRefs,
+        });
+      }
+    });
+
+    // Update pageRefsRef to match DOM
+    pageRefsRef.current = newPageRefs;
+
+    // Ensure at least one page exists - create default page if empty
+    if (pageRefsRef.current.length === 0 && editorRef.current) {
+      const editor = editorRef.current;
+      const pageElement = window.document.createElement('div');
+      pageElement.className = styles.page;
+
+      const pageContentElement = window.document.createElement('div');
+      pageContentElement.className = styles.pageContent;
+
+      const blockElement = window.document.createElement('p');
+      blockElement.className = 'block paragraph';
+      const blockId = `block-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      blockElement.setAttribute('data-block-id', blockId);
+
+      pageContentElement.appendChild(blockElement);
+      pageElement.appendChild(pageContentElement);
+      editor.appendChild(pageElement);
+
+      const blockRefs = new Map<string, HTMLElement>();
+      blockRefs.set(blockId, blockElement);
+
+      pageRefsRef.current.push({
+        element: pageElement,
+        contentElement: pageContentElement,
+        blockRefs,
+      });
+    }
+  };
+
   const handleInput = (_e: React.FormEvent<HTMLDivElement>) => {
+    // Rebuild pageRefs from DOM first (handles pages/blocks added/removed by browser)
+    syncPageRefsWithDOM();
+
     // Handle page overflow immediately (before debounce)
     handlePageOverflow();
 
@@ -1171,7 +1420,166 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
     setTimeout(updateToolbar, 0);
   };
 
+  // Handle page break insertion
+  const handlePageBreak = (): void => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    if (!range) return;
+
+    // Find the block containing the cursor/selection
+    let block: HTMLElement | null = null;
+    let node: Node | null = range.commonAncestorContainer;
+    while (node && node !== editorRef.current) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const element = node as HTMLElement;
+        if (element.hasAttribute('data-block-id')) {
+          block = element;
+          break;
+        }
+      }
+      node = node.parentNode;
+    }
+
+    if (!block) return;
+
+    // Find which page this block is in
+    let currentPageIndex = -1;
+    let currentPageRef: PageRef | null = null;
+    for (let i = 0; i < pageRefsRef.current.length; i++) {
+      const pageRef = pageRefsRef.current[i];
+      if (pageRef.contentElement.contains(block)) {
+        currentPageIndex = i;
+        currentPageRef = pageRef;
+        break;
+      }
+    }
+
+    if (!currentPageRef || currentPageIndex === -1) return;
+
+    try {
+      // Split the block at cursor position while preserving formatting
+      // Create a range from start of block to cursor position
+      const beforeRange = window.document.createRange();
+      beforeRange.selectNodeContents(block);
+      beforeRange.setEnd(range.startContainer, range.startOffset);
+
+      // Create a range from cursor position to end of block
+      const afterRange = window.document.createRange();
+      afterRange.selectNodeContents(block);
+      afterRange.setStart(range.startContainer, range.startOffset);
+
+      // Extract HTML content before and after cursor (preserves formatting)
+      const beforeContent = beforeRange.cloneContents();
+      const afterContent = afterRange.cloneContents();
+
+      // Update current block with content before cursor (preserves formatting)
+      block.innerHTML = '';
+      block.appendChild(beforeContent);
+
+      // Create page break block
+      const pageBreakElement = window.document.createElement('div');
+      const pageBreakId = `block-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      pageBreakElement.className = 'block page-break';
+      pageBreakElement.setAttribute('data-page-break', 'true');
+      pageBreakElement.setAttribute('data-block-id', pageBreakId);
+      pageBreakElement.setAttribute('contenteditable', 'false');
+      pageBreakElement.style.visibility = 'hidden';
+      pageBreakElement.style.height = '0';
+      pageBreakElement.style.margin = '0';
+      pageBreakElement.style.padding = '0';
+      pageBreakElement.style.border = 'none';
+      pageBreakElement.style.overflow = 'hidden';
+
+      // Add to pageRefsRef
+      if (currentPageRef) {
+        currentPageRef.blockRefs.set(pageBreakId, pageBreakElement);
+      }
+
+      // Insert page break after current block
+      if (block.parentNode) {
+        block.parentNode.insertBefore(pageBreakElement, block.nextSibling);
+      }
+
+      // If there's content after cursor, create a new block for it (preserves formatting)
+      const hasAfterContent = afterContent.textContent?.trim() || '';
+      if (hasAfterContent) {
+        const newBlockElement = window.document.createElement('p');
+        newBlockElement.className = 'block paragraph';
+        const blockId = `block-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        newBlockElement.setAttribute('data-block-id', blockId);
+        newBlockElement.setAttribute('contenteditable', 'true');
+        // Append the cloned content to preserve formatting
+        newBlockElement.appendChild(afterContent);
+
+        // Insert new block after page break
+        if (pageBreakElement.parentNode) {
+          pageBreakElement.parentNode.insertBefore(newBlockElement, pageBreakElement.nextSibling);
+        }
+
+        // Update pageRefsRef
+        if (currentPageRef) {
+          currentPageRef.blockRefs.set(blockId, newBlockElement);
+        }
+
+        // Set cursor to start of new block
+        setTimeout(() => {
+          setCursorToStart(newBlockElement);
+        }, 0);
+      } else {
+        // No text after cursor, just set cursor to end of current block
+        setTimeout(() => {
+          const range = window.document.createRange();
+          const selection = window.getSelection();
+          if (selection && block) {
+            range.selectNodeContents(block);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+        }, 0);
+      }
+
+      // Trigger page overflow handling to move content to next page if needed
+      setTimeout(() => {
+        handlePageOverflow();
+        // Trigger document change
+        const updatedDocument = recreateDocumentFromDOM();
+        if (updatedDocument) {
+          onDocumentChange(updatedDocument);
+        }
+      }, 0);
+    } catch (err) {
+      console.error('Failed to insert page break:', err);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Handle formatting shortcuts (Ctrl+B, Ctrl+I, Ctrl+U) - use our custom format function
+    const isModifierPressed = e.ctrlKey || e.metaKey; // Ctrl on Windows/Linux, Cmd on Mac
+
+    if (isModifierPressed) {
+      if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        e.stopPropagation();
+        applyFormat('bold');
+        return;
+      }
+      if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault();
+        e.stopPropagation();
+        applyFormat('italic');
+        return;
+      }
+      if (e.key === 'u' || e.key === 'U') {
+        e.preventDefault();
+        e.stopPropagation();
+        applyFormat('underline');
+        return;
+      }
+    }
+
     // Handle Enter key to ensure page overflow is checked after new block creation
     if (e.key === 'Enter') {
       // Use setTimeout to allow the browser to create the new block first
@@ -1205,7 +1613,7 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
         onKeyDown={handleKeyDown}
         onMouseUp={handleMouseUp}
       ></div>
-      <FormatToolbar onFormat={applyFormat} activeFormats={activeFormats} />
+      <FormatToolbar onFormat={applyFormat} activeFormats={activeFormats} onPageBreak={handlePageBreak} />
     </>
   );
 }
