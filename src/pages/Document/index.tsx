@@ -219,7 +219,7 @@ function DocumentPage() {
 
             <div className={styles.headerActions}>
               {saving && <Text type="secondary">Saving...</Text>}
-              {documentUpdatedAt && (
+              {!saving && documentUpdatedAt && (
                 <Text type="secondary" className={styles.lastUpdated}>
                   Last updated:{' '}
                   {formatUTCTimestampForDisplay(documentUpdatedAt, {

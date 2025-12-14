@@ -825,17 +825,13 @@ export function Editor({ document, onDocumentChange, onToolbarPropsReady }: Edit
     spansWithFontSize.forEach((span) => {
       const spanElement = span as HTMLElement;
       const style = spanElement.getAttribute('style') || '';
-      // Check if this span only has font-size style (browser-added heading style)
+      // Check if this span has font-size style (browser-added heading style)
       const styleMatch = style.match(/font-size:\s*[\d.]+em/);
       if (styleMatch && !spanElement.hasAttribute('data-format')) {
-        // This is a browser-added heading style span - unwrap it
-        const parent = spanElement.parentNode;
-        if (parent) {
-          while (spanElement.firstChild) {
-            parent.insertBefore(spanElement.firstChild, spanElement);
-          }
-          parent.removeChild(spanElement);
-        }
+        // This is a browser-added heading style span - set font-size to 1em instead of removing
+        // Replace the font-size value with 1em, preserving other styles
+        const updatedStyle = style.replace(/font-size:\s*[\d.]+em/g, 'font-size: 1em');
+        spanElement.setAttribute('style', updatedStyle);
       }
     });
   };
