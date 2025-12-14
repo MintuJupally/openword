@@ -6,6 +6,12 @@ A modern, feature-rich document editor built with React and TypeScript. OpenWord
 
 OpenWord is a web-based document editor that allows users to create, edit, and manage documents with a clean and intuitive interface. The editor features automatic page overflow handling, real-time formatting, and persistent local storage using IndexedDB. Documents are organized in a paginated format similar to traditional word processors, with automatic content flow between pages.
 
+## Demo
+
+Watch a demo of OpenWord in action:
+
+[OpenWord Demo Video](https://drive.google.com/file/d/1TsnU0iWncWlIw6eW1g3jETXERDPyEYhg/view?usp=sharing)
+
 ## Getting Started
 
 ### Prerequisites
