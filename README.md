@@ -1,73 +1,89 @@
-# React + TypeScript + Vite
+# OpenWord
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern, feature-rich document editor built with React and TypeScript. OpenWord provides a Google Docs-like editing experience with automatic page management, rich text formatting, and local storage capabilities.
 
-Currently, two official plugins are available:
+## Project Description
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+OpenWord is a web-based document editor that allows users to create, edit, and manage documents with a clean and intuitive interface. The editor features automatic page overflow handling, real-time formatting, and persistent local storage using IndexedDB. Documents are organized in a paginated format similar to traditional word processors, with automatic content flow between pages.
 
-## React Compiler
+## Getting Started
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Prerequisites
 
-## Expanding the ESLint configuration
+- Node.js (v16 or higher)
+- npm
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Installation
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+1. Clone the repository
+2. Install dependencies:
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Running the Application
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x';
-import reactDom from 'eslint-plugin-react-dom';
+Start the development server:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
+```bash
+npm run dev
 ```
+
+The application will be available at `http://localhost:5173` (or the port shown in the terminal).
+
+## Tech Stack
+
+- **React 19** - UI library for building the user interface
+- **TypeScript** - Type-safe JavaScript for better code quality
+- **Vite** - Fast build tool and development server
+- **Ant Design** - UI component library for consistent design
+- **React Router** - Client-side routing for navigation
+- **IndexedDB (via idb)** - Client-side database for persistent document storage
+- **UUID** - Unique identifier generation for documents and blocks
+
+## Features
+
+### Document Management
+
+- Create and manage multiple documents
+- Edit document titles inline
+- Automatic document saving with debouncing
+- View recent documents on the home page
+- Last updated timestamp display
+
+### Rich Text Editing
+
+- **Text Formatting:**
+  - Bold (Ctrl+B)
+  - Italic (Ctrl+I)
+  - Underline (Ctrl+U)
+  - Strikethrough
+- **Block Types:**
+  - Heading 1 (H1)
+  - Heading 2 (H2)
+  - Heading 3 (H3)
+  - Paragraph
+- Formatting toolbar with active state indicators
+- Multi-block selection and formatting support
+
+### Page Management
+
+- Automatic content flow - content automatically moves to the next page when the current page is full
+- Smart page optimization - content automatically moves back to previous pages when space becomes available
+- Manual page breaks - insert page breaks to force content onto a new page
+- A4 page format with standard margins for document printing
+
+### Editor Features
+
+- Smooth editing experience with responsive performance
+- Formatting toolbar with visual feedback for active formats
+- Keyboard shortcuts for quick formatting (Ctrl+B, Ctrl+I, Ctrl+U)
+- Multi-block selection and formatting support
+- Browser tab title updates to match document title
+
+### Storage
+
+- All documents are automatically saved locally in your browser
+- Changes are saved automatically as you type
+- Documents persist across browser sessions - no data loss on refresh or browser restart
