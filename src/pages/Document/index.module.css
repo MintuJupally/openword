@@ -8,11 +8,13 @@
 }
 
 .header {
-  padding: 1rem;
   border-bottom: 1px solid #e8e8e8;
   background-color: #fafafa;
   display: flex;
   align-items: center;
+
+  display: flex;
+  flex-direction: column;
 }
 
 .headerContent {

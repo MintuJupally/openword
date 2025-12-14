@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Document, Block } from '../../models/document';
-import { FormatToolbar } from './FormatToolbar';
 import styles from './index.module.css';
 
 interface EditorProps {
   document: Document | null;
   onDocumentChange: (document: Document) => void;
+  onToolbarPropsReady?: (props: {
+    onFormat: (format: 'bold' | 'italic' | 'underline' | 'strikethrough') => void;
+    activeFormats: Set<'bold' | 'italic' | 'underline' | 'strikethrough'>;
+    onPageBreak: () => void;
+    onBlockTypeChange: (blockType: 'h1' | 'h2' | 'h3' | 'paragraph') => void;
+  }) => void;
 }
 
 interface PageRef {
@@ -16,7 +21,7 @@ interface PageRef {
 
 type FormatType = 'bold' | 'italic' | 'underline' | 'strikethrough';
 
-export function Editor({ document, onDocumentChange }: EditorProps) {
+export function Editor({ document, onDocumentChange, onToolbarPropsReady }: EditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const isInitializedRef = useRef(false);
   const pageRefsRef = useRef<PageRef[]>([]);
@@ -813,7 +818,141 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
     }
   };
 
+  // Clean up heading styles that browser adds when merging blocks
+  const cleanupHeadingStyles = (element: HTMLElement): void => {
+    // Find all spans with font-size styles (browser adds these when merging heading blocks)
+    const spansWithFontSize = element.querySelectorAll('span[style*="font-size"]');
+    spansWithFontSize.forEach((span) => {
+      const spanElement = span as HTMLElement;
+      const style = spanElement.getAttribute('style') || '';
+      // Check if this span only has font-size style (browser-added heading style)
+      const styleMatch = style.match(/font-size:\s*[\d.]+em/);
+      if (styleMatch && !spanElement.hasAttribute('data-format')) {
+        // This is a browser-added heading style span - unwrap it
+        const parent = spanElement.parentNode;
+        if (parent) {
+          while (spanElement.firstChild) {
+            parent.insertBefore(spanElement.firstChild, spanElement);
+          }
+          parent.removeChild(spanElement);
+        }
+      }
+    });
+  };
+
+  // Fix div+br blocks created by Enter key - replace with same type as preceding block
+  const fixEnterCreatedBlocks = (): void => {
+    if (!editorRef.current) return;
+
+    // Find all div elements that might be Enter-created blocks
+    const allDivs = editorRef.current.querySelectorAll('div');
+    allDivs.forEach((div) => {
+      // Check if this is a div with only a br (typical Enter-created block)
+      const children = Array.from(div.childNodes);
+      const hasOnlyBr =
+        children.length === 1 &&
+        children[0].nodeType === Node.ELEMENT_NODE &&
+        (children[0] as HTMLElement).tagName === 'BR';
+
+      // Also check if it's an empty div (browser sometimes creates empty divs)
+      const isEmpty =
+        children.length === 0 ||
+        (children.length === 1 && children[0].nodeType === Node.TEXT_NODE && !children[0].textContent?.trim());
+
+      if ((hasOnlyBr || isEmpty) && div.parentElement) {
+        // Check if this div is a direct child of pageContent (it's a block)
+        const pageContent = div.closest(`.${styles.pageContent}`);
+        if (pageContent && pageContent.contains(div) && div.parentElement === pageContent) {
+          // Find the preceding sibling block
+          let precedingBlock: HTMLElement | null = null;
+          let current: Node | null = div.previousSibling;
+          while (current) {
+            if (current.nodeType === Node.ELEMENT_NODE) {
+              const element = current as HTMLElement;
+              if (element.hasAttribute('data-block-id') && !element.hasAttribute('data-page-break')) {
+                precedingBlock = element;
+                break;
+              }
+            }
+            current = current.previousSibling;
+          }
+
+          if (precedingBlock) {
+            // Get the tag type of the preceding block
+            const precedingTag = precedingBlock.tagName.toLowerCase();
+            const blockId = `block-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+            // Create new block with same type as preceding block
+            const newBlockElement = window.document.createElement(
+              precedingTag as 'p' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6',
+            );
+
+            // Determine block type and class from tag
+            let blockType = 'paragraph';
+            if (precedingTag.startsWith('h')) {
+              blockType = 'heading';
+              const level = parseInt(precedingTag.substring(1), 10);
+              newBlockElement.setAttribute('data-level', String(level));
+            }
+
+            newBlockElement.className = `block ${blockType}`;
+            newBlockElement.setAttribute('data-block-id', blockId);
+            newBlockElement.setAttribute('contenteditable', 'true');
+
+            // Preserve alignment if it exists
+            const currentAlignment = precedingBlock.style.textAlign;
+            if (currentAlignment) {
+              newBlockElement.style.textAlign = currentAlignment;
+            }
+
+            // Replace the div with the new block
+            if (div.parentNode) {
+              div.parentNode.replaceChild(newBlockElement, div);
+            }
+
+            // Update pageRefsRef
+            pageRefsRef.current.forEach((pageRef) => {
+              if (pageRef.contentElement.contains(newBlockElement)) {
+                pageRef.blockRefs.set(blockId, newBlockElement);
+              }
+            });
+          } else {
+            // No preceding block - create a paragraph
+            const blockId = `block-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const newBlockElement = window.document.createElement('p');
+            newBlockElement.className = 'block paragraph';
+            newBlockElement.setAttribute('data-block-id', blockId);
+            newBlockElement.setAttribute('contenteditable', 'true');
+
+            if (div.parentNode) {
+              div.parentNode.replaceChild(newBlockElement, div);
+            }
+
+            pageRefsRef.current.forEach((pageRef) => {
+              if (pageRef.contentElement.contains(newBlockElement)) {
+                pageRef.blockRefs.set(blockId, newBlockElement);
+              }
+            });
+          }
+        }
+      }
+    });
+  };
+
   const handleInput = (_e: React.FormEvent<HTMLDivElement>) => {
+    // Clean up any heading style spans that browser might have added during block merges
+    if (editorRef.current) {
+      const allBlocks = editorRef.current.querySelectorAll('[data-block-id]');
+      allBlocks.forEach((block) => {
+        if (!(block as HTMLElement).hasAttribute('data-page-break')) {
+          cleanupHeadingStyles(block as HTMLElement);
+        }
+      });
+    }
+
+    // Fix div+br blocks created by Enter key
+    fixEnterCreatedBlocks();
+
     // Rebuild pageRefs from DOM first (handles pages/blocks added/removed by browser)
     syncPageRefsWithDOM();
 
@@ -1420,6 +1559,112 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
     setTimeout(updateToolbar, 0);
   };
 
+  // Handle block type change
+  const handleBlockTypeChange = (blockTypeOption: 'h1' | 'h2' | 'h3' | 'paragraph'): void => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    if (!range || range.collapsed) return;
+
+    try {
+      // Find all blocks that intersect with the selection
+      const blocks: HTMLElement[] = [];
+      if (editorRef.current) {
+        const allBlocks = editorRef.current.querySelectorAll('[data-block-id]');
+        allBlocks.forEach((blockElement) => {
+          const block = blockElement as HTMLElement;
+          // Skip page break blocks
+          if (block.hasAttribute('data-page-break')) return;
+          if (range.intersectsNode(block)) {
+            blocks.push(block);
+          }
+        });
+      }
+
+      if (blocks.length === 0) return;
+
+      // Map block type option to actual block type and metadata
+      let blockType: 'paragraph' | 'heading' | 'list' = 'paragraph';
+      let level: number | undefined = undefined;
+
+      switch (blockTypeOption) {
+        case 'h1':
+          blockType = 'heading';
+          level = 1;
+          break;
+        case 'h2':
+          blockType = 'heading';
+          level = 2;
+          break;
+        case 'h3':
+          blockType = 'heading';
+          level = 3;
+          break;
+        case 'paragraph':
+          blockType = 'paragraph';
+          break;
+      }
+
+      // Process each block
+      blocks.forEach((block) => {
+        // Get plain text content (strips all inline formatting)
+        const plainText = block.textContent || '';
+
+        // Determine the new tag
+        const tag = blockType === 'heading' ? `h${level}` : 'p';
+
+        // Create new element with the updated type
+        const newElement = window.document.createElement(tag);
+        newElement.className = `block ${blockType}`;
+        newElement.setAttribute('data-block-id', block.getAttribute('data-block-id') || '');
+        newElement.setAttribute('contenteditable', 'true');
+        newElement.textContent = plainText;
+
+        // Apply heading level as data attribute if needed
+        if (blockType === 'heading' && level) {
+          newElement.setAttribute('data-level', String(level));
+        }
+
+        // Preserve alignment if it exists
+        const currentAlignment = block.style.textAlign;
+        if (currentAlignment) {
+          newElement.style.textAlign = currentAlignment;
+        }
+
+        // Replace the old block with the new one
+        if (block.parentNode) {
+          block.parentNode.replaceChild(newElement, block);
+        }
+      });
+
+      // Update pageRefsRef to reflect the changes
+      pageRefsRef.current.forEach((pageRef) => {
+        blocks.forEach((oldBlock) => {
+          const blockId = oldBlock.getAttribute('data-block-id');
+          if (blockId) {
+            // Find the new element
+            const newBlockElement = editorRef.current?.querySelector(`[data-block-id="${blockId}"]`) as HTMLElement;
+            if (newBlockElement && pageRef.blockRefs.has(blockId)) {
+              // Update the reference in the map
+              pageRef.blockRefs.set(blockId, newBlockElement);
+            }
+          }
+        });
+      });
+
+      // Trigger document change
+      setTimeout(() => {
+        const updatedDocument = recreateDocumentFromDOM();
+        if (updatedDocument) {
+          onDocumentChange(updatedDocument);
+        }
+      }, 0);
+    } catch (err) {
+      console.error('Failed to change block type:', err);
+    }
+  };
+
   // Handle page break insertion
   const handlePageBreak = (): void => {
     const selection = window.getSelection();
@@ -1599,6 +1844,18 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
     };
   }, []);
 
+  // Expose toolbar props to parent component
+  useEffect(() => {
+    if (onToolbarPropsReady) {
+      onToolbarPropsReady({
+        onFormat: applyFormat,
+        activeFormats,
+        onPageBreak: handlePageBreak,
+        onBlockTypeChange: handleBlockTypeChange,
+      });
+    }
+  }, [activeFormats]);
+
   return (
     <>
       <div
@@ -1613,7 +1870,6 @@ export function Editor({ document, onDocumentChange }: EditorProps) {
         onKeyDown={handleKeyDown}
         onMouseUp={handleMouseUp}
       ></div>
-      <FormatToolbar onFormat={applyFormat} activeFormats={activeFormats} onPageBreak={handlePageBreak} />
     </>
   );
 }

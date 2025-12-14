@@ -1,17 +1,13 @@
 .toolbar {
-  position: fixed;
-  bottom: 2rem;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   gap: 0.5rem;
-  padding: 0.5rem;
+  padding: 0.25rem 0.5rem;
   background: white;
   border: 1px solid #d9d9d9;
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  pointer-events: auto;
+  align-items: center;
+  justify-content: center;
+  /* border-radius: 6px; */
+  /* box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1); */
 }
 
 .toolbar button {

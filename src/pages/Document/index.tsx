@@ -6,6 +6,7 @@ import { getDocument, saveDocument } from '../../storage/local';
 import type { Document } from '../../models/document';
 import { formatUTCTimestampForDisplay } from '../../utils/date';
 import { Editor } from '../../components/Editor';
+import { FormatToolbar } from '../../components/Editor/FormatToolbar';
 import styles from './index.module.css';
 
 const { Text } = Typography;
@@ -28,6 +29,14 @@ function DocumentPage() {
   const [titleValue, setTitleValue] = useState('');
   const titleInputRef = useRef<HTMLInputElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Toolbar state
+  const [toolbarProps, setToolbarProps] = useState<{
+    onFormat: (format: 'bold' | 'italic' | 'underline' | 'strikethrough') => void;
+    activeFormats: Set<'bold' | 'italic' | 'underline' | 'strikethrough'>;
+    onPageBreak: () => void;
+    onBlockTypeChange: (blockType: 'h1' | 'h2' | 'h3' | 'paragraph') => void;
+  } | null>(null);
 
   useEffect(() => {
     if (docId) {
@@ -73,6 +82,18 @@ function DocumentPage() {
     };
   }, [document, isEditingTitle]);
 
+  // Update browser tab title to match document title
+  useEffect(() => {
+    if (documentTitle) {
+      window.document.title = documentTitle + ' | OpenWord';
+    }
+
+    // Cleanup: restore default title when component unmounts
+    return () => {
+      window.document.title = 'OpenWord';
+    };
+  }, [documentTitle]);
+
   const loadDocument = async (id: string) => {
     try {
       setLoading(true);
@@ -115,7 +136,7 @@ function DocumentPage() {
 
     // Only update if title actually changed
     if (trimmedTitle !== document.title) {
-    // Update document title
+      // Update document title
       const updatedDoc = { ...document, title: trimmedTitle, updatedAt: Date.now() };
       setDocument(updatedDoc);
     } else {
@@ -175,37 +196,50 @@ function DocumentPage() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/')} />
-        <div className={styles.headerContent}>
-          <div className={styles.headerTitle}>
-            {isEditingTitle ? (
-              <input
-                ref={titleInputRef}
-                type="text"
-                value={titleValue}
-                onChange={handleTitleChange}
-                onBlur={handleTitleSave}
-                onKeyDown={handleTitleKeyDown}
-                className={styles.headerTitleInput}
-              />
-            ) : (
-              <Text className={styles.headerTitleText} onClick={handleTitleClick} style={{ cursor: 'pointer' }}>
-                {documentTitle}
-              </Text>
-            )}
-          </div>
+        <div style={{ width: 'calc(100% - 2rem)', display: 'flex', padding: '1rem' }}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/')} />
+          <div className={styles.headerContent}>
+            <div className={styles.headerTitle}>
+              {isEditingTitle ? (
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  value={titleValue}
+                  onChange={handleTitleChange}
+                  onBlur={handleTitleSave}
+                  onKeyDown={handleTitleKeyDown}
+                  className={styles.headerTitleInput}
+                />
+              ) : (
+                <Text className={styles.headerTitleText} onClick={handleTitleClick} style={{ cursor: 'pointer' }}>
+                  {documentTitle}
+                </Text>
+              )}
+            </div>
 
-          <div className={styles.headerActions}>
-            {saving && <Text type="secondary">Saving...</Text>}
-            {documentUpdatedAt && (
-              <Text type="secondary" className={styles.lastUpdated}>
-                Last updated:{' '}
-                {formatUTCTimestampForDisplay(documentUpdatedAt, {
-                  second: undefined,
-                })}
-              </Text>
-            )}
+            <div className={styles.headerActions}>
+              {saving && <Text type="secondary">Saving...</Text>}
+              {documentUpdatedAt && (
+                <Text type="secondary" className={styles.lastUpdated}>
+                  Last updated:{' '}
+                  {formatUTCTimestampForDisplay(documentUpdatedAt, {
+                    second: undefined,
+                  })}
+                </Text>
+              )}
+            </div>
           </div>
+        </div>
+
+        <div style={{ width: '100%' }}>
+          {toolbarProps && (
+            <FormatToolbar
+              onFormat={toolbarProps.onFormat}
+              activeFormats={toolbarProps.activeFormats}
+              onPageBreak={toolbarProps.onPageBreak}
+              onBlockTypeChange={toolbarProps.onBlockTypeChange}
+            />
+          )}
         </div>
       </div>
       <div className={styles.editorContainer}>
@@ -214,6 +248,7 @@ function DocumentPage() {
           onDocumentChange={(doc) => {
             setDocument(doc);
           }}
+          onToolbarPropsReady={setToolbarProps}
         />
       </div>
     </div>
